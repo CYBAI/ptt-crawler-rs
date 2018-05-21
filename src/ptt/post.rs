@@ -6,7 +6,7 @@ use ptt::comment::{CommentType, Comment};
 use ptt::user::User;
 use regex::Regex;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Post {
     id: String,
     author: User,
@@ -20,61 +20,75 @@ pub struct Post {
 }
 
 impl Post {
-    pub fn new(
-        id: String,
-        author: User,
-        title: String,
-        time: String,
-        content: String,
-        comments: Vec<Comment>,
-        ip: String,
-        category: Option<String>,
-        board: String,
-    ) -> Self {
+    pub fn new(id: String, board: String) -> Self {
         Post {
             id,
-            author,
-            title,
-            time,
-            content,
-            comments,
-            ip,
-            category,
+            author: User::new(String::from(""), None),
+            title: String::from(""),
+            time: String::from(""),
+            content: String::from(""),
+            comments: Vec::new(),
+            ip: String::from(""),
+            category: None,
             board,
         }
     }
-}
 
-pub struct PostCrawler {
-    id: String,
-    board: String,
-}
+    pub fn set_time(&mut self, time: &str) -> &mut Self {
+        self.time = time.trim().to_string();
 
-impl PostCrawler {
-    pub fn new(id: &str, board: &str) -> Self {
-        Self {
-            id: id.to_string(),
-            board: board.to_string()
-        }
+        self
     }
-}
 
-impl Crawl for PostCrawler {
-    type Target = Post;
+    pub fn set_title(&mut self, title: &str) -> &mut Self {
+        self.title = title.to_string();
 
-    fn crawl(&self, document: Document) -> Result<Post, ()> {
-        let metalines = document.find(Class("article-metaline"))
-                                .filter_map(|n| n.find(Class("article-meta-value")).next())
-                                .map(|n| n.text())
-                                .collect::<Vec<String>>();
+        self
+    }
 
+    pub fn set_ip(&mut self, document: &Document) -> &mut Self {
+        self.ip = match document.find(Class("f2")).next() {
+            Some(node) => {
+                let ip_regex = Regex::new(r"(\d{0,4}\.\d{0,4}\.\d{0,4}\.\d{0,4})").unwrap();
+
+                match ip_regex.captures(&*node.text()) {
+                    Some(captured) => captured.get(0).unwrap().as_str().to_string(),
+                    None => String::from("")
+                }
+            },
+            None => String::from(""),
+        };
+
+        self
+    }
+
+    pub fn set_author(&mut self, user_line: &str) -> &mut Self {
+        let user_regex = Regex::new(r"(?P<id>\w+)(?:\s\((?P<name>.*)\))?").unwrap();
+        let captures = user_regex.captures(user_line);
+
+        self.author = match captures {
+            Some(caps) => User::new(
+                caps.get(1).map_or(String::from(""), |m| String::from(m.as_str())),
+                caps.get(2).and_then(|m| Some(String::from(m.as_str()))),
+            ),
+            None => User::new(String::from(""), None)
+        };
+
+        self
+    }
+
+    pub fn set_category(&mut self, title: &str) -> &mut Self {
         let category_regex = Regex::new(r"^\[(.*)\]").unwrap();
-        let category = match category_regex.captures(&*metalines[1]) {
+        self.category = match category_regex.captures(title) {
             Some(caps) => caps.get(1).and_then(|m| Some(String::from(m.as_str()))),
             None => None,
         };
 
-        let content = document.find(Class("bbs-screen"))
+        self
+    }
+
+    pub fn set_content(&mut self, document: &Document) -> &mut Self {
+        self.content = document.find(Class("bbs-screen"))
                                 .next()
                                 .unwrap()
                                 .children()
@@ -84,9 +98,16 @@ impl Crawl for PostCrawler {
                                     } else {
                                         None
                                     }
-                                }).nth(0).unwrap();
+                                })
+                                .nth(0)
+                                .unwrap()
+                                .text().trim().to_string();
 
-        let comments = document.find(Class("push"))
+        self
+    }
+
+    pub fn set_comments(&mut self, document: &Document) -> &mut Self {
+        self.comments = document.find(Class("push"))
                                 .map(|node| {
                                     let type_ = match node.find(Class("push-tag")).next() {
                                         Some(push_tag) => {
@@ -105,12 +126,12 @@ impl Crawl for PostCrawler {
                                     };
 
                                     let content = match node.find(Class("push-content")).next() {
-                                        Some(content) => content.text(),
+                                        Some(content) => content.text().trim().to_string(),
                                         None => String::from("")
                                     };
 
                                     let time = match node.find(Class("push-ipdatetime")).next() {
-                                        Some(time) => time.text(),
+                                        Some(time) => time.text().trim().to_string(),
                                         None => String::from("")
                                     };
 
@@ -118,39 +139,27 @@ impl Crawl for PostCrawler {
                                 })
                                 .collect::<Vec<Comment>>();
 
-        let user_regex = Regex::new(r"(?P<id>\w+)(?:\s\((?P<name>.*)\))?").unwrap();
-        let captures = user_regex.captures(&*metalines[0]);
+        self
+    }
+}
 
-        let author = match captures {
-            Some(caps) => User::new(
-                caps.get(1).map_or(String::from(""), |m| String::from(m.as_str())),
-                caps.get(2).and_then(|m| Some(String::from(m.as_str()))),
-            ),
-            None => return Err(())
-        };
+impl Crawl for Post {
+    type Target = Self;
 
-        let ip = match document.find(Class("f2")).next() {
-            Some(node) => {
-                let ip_regex = Regex::new(r"(\d{0,4}\.\d{0,4}\.\d{0,4}\.\d{0,4})").unwrap();
+    fn crawl(&mut self, document: Document) -> Result<Self, ()> {
+        let metalines = document.find(Class("article-metaline"))
+                                .filter_map(|n| n.find(Class("article-meta-value")).next())
+                                .map(|n| n.text())
+                                .collect::<Vec<String>>();
 
-                match ip_regex.captures(&*node.text()) {
-                    Some(captured) => captured.get(0).unwrap().as_str().to_string(),
-                    None => String::from("")
-                }
-            },
-            None => String::from(""),
-        };
+        self.set_author(&metalines[0])
+            .set_title(&metalines[1])
+            .set_category(&metalines[1])
+            .set_time(&metalines[2])
+            .set_ip(&document)
+            .set_content(&document)
+            .set_comments(&document);
 
-        Ok(Post::new(
-            self.id.clone(),
-            author,
-            metalines[1].clone(),
-            metalines[2].clone(),
-            content.text().trim().to_string(),
-            comments,
-            ip,
-            category,
-            self.board.clone(),
-        ))
+        Ok(self.clone())
     }
 }
