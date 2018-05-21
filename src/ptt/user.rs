@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct User {
     id: String,
     name: Option<String>,

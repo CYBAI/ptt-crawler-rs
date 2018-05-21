@@ -1,13 +1,13 @@
 use ptt::user::User;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum CommentType {
   Normal,
   Good,
   Bad
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Comment {
   type_: CommentType,
   user: User,

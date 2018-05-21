@@ -1,8 +1,14 @@
+#![feature(plugin, custom_derive)]
+#![plugin(rocket_codegen)]
+
 extern crate reqwest;
 extern crate regex;
 extern crate select;
 extern crate serde;
 extern crate serde_json;
+#[macro_use]
+extern crate serde_derive;
+extern crate rocket;
 
 mod crawler;
 mod ptt;
@@ -12,22 +18,35 @@ use crawler::Crawl;
 use ptt::post::PostCrawler;
 use select::document::Document;
 
-fn main() {
-    let url = "https://www.ptt.cc/bbs/Baseball/M.1526791990.A.35B.html";
-    // User only has ID
-    // let url = "https://www.ptt.cc/bbs/NBA/M.1526792335.A.DC5.html";
+use std::io::Cursor;
+use rocket::response::Response;
+use rocket::http::{ContentType, Status};
 
+#[get("/post/<board_name>/<post_id>")]
+fn search_post(board_name: String, post_id: String) -> Response<'static> {
+    let url = format!("https://www.ptt.cc/bbs/{}/{}.html", board_name, post_id);
     let client = Client::new();
+    if let Ok(response) = client.get(&url).send() {
+        if let Ok(document) = Document::from_read(response) {
+            let post_crawler = PostCrawler::new(&board_name, &post_id);
+            if let Ok(post) = post_crawler.crawl(document) {
+                let post_json = serde_json::to_string(&post).unwrap();
 
-    let response = match client.get(url).send() {
-        Ok(res) => res,
-        Err(_) => panic!("Cannot found page info"),
+                return Response::build()
+                        .status(Status::Ok)
+                        .header(ContentType::JSON)
+                        .sized_body(Cursor::new(post_json))
+                        .finalize();
+            }
+        }
     };
 
-    let document = Document::from_read(response);
-    if let Ok(document) = document {
-        let post_crawler = PostCrawler::new("Baseball", "M.1526791990.A.35B");
-        let doc = post_crawler.crawl(document);
-        println!("{:?}", doc);
-    }
+    Response::build()
+        .status(Status::new(500, "Document Parsing Error"))
+        .header(ContentType::JSON)
+        .finalize()
+}
+
+fn main() {
+    rocket::ignite().mount("/search/", routes![search_post]).launch();
 }

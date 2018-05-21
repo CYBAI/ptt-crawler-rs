@@ -6,7 +6,7 @@ use ptt::comment::{CommentType, Comment};
 use ptt::user::User;
 use regex::Regex;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Post {
     id: String,
     author: User,
