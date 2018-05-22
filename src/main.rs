@@ -15,7 +15,7 @@ mod ptt;
 
 use reqwest::Client;
 use crawler::Crawl;
-use ptt::post::Post;
+use ptt::post::PostBuilder;
 use select::document::Document;
 
 use std::io::Cursor;
@@ -28,7 +28,7 @@ fn search_post(board_name: String, post_id: String) -> Response<'static> {
     let client = Client::new();
     if let Ok(response) = client.get(&url).send() {
         if let Ok(document) = Document::from_read(response) {
-            let mut post_crawler = Post::new(post_id, board_name);
+            let mut post_crawler = PostBuilder::new(post_id, board_name);
             if let Ok(post) = post_crawler.crawl(document) {
                 let post_json = serde_json::to_string(&post).unwrap();
 

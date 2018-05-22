@@ -33,21 +33,34 @@ impl Post {
             board,
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PostBuilder {
+    post: Post
+}
+
+impl PostBuilder {
+    pub fn new(id: String, board: String) -> Self {
+        PostBuilder {
+            post: Post::new(id, board)
+        }
+    }
 
     pub fn set_time(&mut self, time: &str) -> &mut Self {
-        self.time = time.trim().to_string();
+        self.post.time = time.trim().to_string();
 
         self
     }
 
     pub fn set_title(&mut self, title: &str) -> &mut Self {
-        self.title = title.to_string();
+        self.post.title = title.to_string();
 
         self
     }
 
     pub fn set_ip(&mut self, document: &Document) -> &mut Self {
-        self.ip = match document.find(Class("f2")).next() {
+        self.post.ip = match document.find(Class("f2")).next() {
             Some(node) => {
                 let ip_regex = Regex::new(r"(\d{0,4}\.\d{0,4}\.\d{0,4}\.\d{0,4})").unwrap();
 
@@ -66,7 +79,7 @@ impl Post {
         let user_regex = Regex::new(r"(?P<id>\w+)(?:\s\((?P<name>.*)\))?").unwrap();
         let captures = user_regex.captures(user_line);
 
-        self.author = match captures {
+        self.post.author = match captures {
             Some(caps) => User::new(
                 caps.get(1).map_or(String::from(""), |m| String::from(m.as_str())),
                 caps.get(2).and_then(|m| Some(String::from(m.as_str()))),
@@ -79,7 +92,7 @@ impl Post {
 
     pub fn set_category(&mut self, title: &str) -> &mut Self {
         let category_regex = Regex::new(r"^\[(.*)\]").unwrap();
-        self.category = match category_regex.captures(title) {
+        self.post.category = match category_regex.captures(title) {
             Some(caps) => caps.get(1).and_then(|m| Some(String::from(m.as_str()))),
             None => None,
         };
@@ -88,7 +101,7 @@ impl Post {
     }
 
     pub fn set_content(&mut self, document: &Document) -> &mut Self {
-        self.content = document.find(Class("bbs-screen"))
+        self.post.content = document.find(Class("bbs-screen"))
                                 .next()
                                 .unwrap()
                                 .children()
@@ -107,7 +120,7 @@ impl Post {
     }
 
     pub fn set_comments(&mut self, document: &Document) -> &mut Self {
-        self.comments = document.find(Class("push"))
+        self.post.comments = document.find(Class("push"))
                                 .map(|node| {
                                     let type_ = match node.find(Class("push-tag")).next() {
                                         Some(push_tag) => {
@@ -143,7 +156,7 @@ impl Post {
     }
 }
 
-impl Crawl for Post {
+impl Crawl for PostBuilder {
     type Target = Self;
 
     fn crawl(&mut self, document: Document) -> Result<Self, ()> {
